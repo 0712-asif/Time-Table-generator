@@ -47,8 +47,9 @@
 
 #define DB_HOST   "localhost"
 #define DB_USER   "root"
-#define DB_PASS   "1234"
 #define DB_NAME   "timetable_db"
+
+static char db_password[64];  /* MySQL password (entered at runtime) */
 
 /* ──────────────── Special Slot Markers ──────────────── */
 
@@ -564,12 +565,16 @@ static void save_to_mysql(void)
     fclose(sql);
     printf("  [+] SQL file created: timetable_data.sql (%d entries)\n", entry_count);
 
+    /* Prompt for MySQL password */
+    printf("  Enter MySQL password for '%s': ", DB_USER);
+    scanf(" %63[^\n]", db_password);
+
     /* Execute SQL via mysql command-line client */
     char cmd[512];
     sprintf(cmd,
         "\"C:\\Program Files\\MySQL\\MySQL Server 9.3\\bin\\mysql.exe\" "
         "-u%s -p%s < timetable_data.sql",
-        DB_USER, DB_PASS);
+        DB_USER, db_password);
 
     printf("  [*] Executing SQL on MySQL server...\n");
     int result = system(cmd);
@@ -579,8 +584,8 @@ static void save_to_mysql(void)
         printf("  [+] Tables created: config, subjects, timetable\n");
     } else {
         printf("  [!] MySQL import failed (exit code: %d).\n", result);
-        printf("      You can manually import: mysql -u%s -p%s < timetable_data.sql\n",
-               DB_USER, DB_PASS);
+        printf("      You can manually import: mysql -u%s -p < timetable_data.sql\n",
+               DB_USER);
     }
 }
 
