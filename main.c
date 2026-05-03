@@ -12,6 +12,7 @@
  *    - Prevents same-subject repetition in consecutive slots
  *    - Each class has its own independent subject pool
  *    - Exports timetable to file
+ *    - Stores all data in MySQL database (root/1234)
  *
  *  Algorithm: Constraint-Satisfaction via Backtracking
  *  Time Complexity: O(S^(D*P)) worst case, pruned by constraints
@@ -39,8 +40,15 @@
 #define MAX_DAYS        6
 #define TOTAL_SLOTS     9     /* Fixed: 7 periods + 2 breaks     */
 #define MAX_SUBJECTS   20
-#define NAME_LEN       30
-#define FREE_PER_WEEK   3     /* Guaranteed free periods/class    */
+#define SUBJ_NAME_LEN  30    /* Max subject name length          */
+#define FREE_PER_WEEK   3    /* Guaranteed free periods/class    */
+
+/* ──────────────── MySQL Configuration ──────────────── */
+
+#define DB_HOST   "localhost"
+#define DB_USER   "root"
+#define DB_PASS   "1234"
+#define DB_NAME   "timetable_db"
 
 /* ──────────────── Special Slot Markers ──────────────── */
 
@@ -73,7 +81,7 @@ static const char *DAY_NAMES[] = {
 /* ──────────────── Data Structures ──────────────── */
 
 typedef struct {
-    char name[NAME_LEN];
+    char name[SUBJ_NAME_LEN];
     int  weekly_hours;      /* Total periods per week            */
     int  is_lab;            /* 1 = Lab (double slot), 0 = Theory */
     int  max_per_day;       /* Max periods of this subject/day   */
@@ -91,9 +99,6 @@ static int     num_subjects;
 
 /* ──────────────── Utility Functions ──────────────── */
 
-/*
- * is_break_slot - Check if a slot is a break.
- */
 static int is_break_slot(int slot)
 {
     if (slot == TEA_SLOT)   return TEA_BREAK;
@@ -101,9 +106,6 @@ static int is_break_slot(int slot)
     return 0;
 }
 
-/*
- * shuffle - Fisher-Yates shuffle for randomized ordering.
- */
 static void shuffle(int arr[], int n)
 {
     for (int i = n - 1; i > 0; i--) {
@@ -114,9 +116,6 @@ static void shuffle(int arr[], int n)
     }
 }
 
-/*
- * count_subject_in_day - Count occurrences of a subject in a day.
- */
 static int count_subject_in_day(int cls, int day, int sub)
 {
     int count = 0;
@@ -127,10 +126,6 @@ static int count_subject_in_day(int cls, int day, int sub)
     return count;
 }
 
-/*
- * place_free_periods - Randomly pre-place FREE_PER_WEEK free periods
- * into usable (non-break) slots for a class.
- */
 static void place_free_periods(int cls)
 {
     int positions[MAX_DAYS * TOTAL_SLOTS];
@@ -154,17 +149,6 @@ static void place_free_periods(int cls)
 
 /* ──────────────── Backtracking Solver ──────────────── */
 
-/*
- * solve - Fill remaining EMPTY slots with subjects using backtracking.
- *
- * Breaks and FREE periods are already pre-placed.
- * Constraints:
- *   a. Subject has remaining hours
- *   b. No consecutive repetition for theory
- *   c. Daily limit per subject
- *   d. Labs need two consecutive empty slots
- *   e. If no subject fits, mark as FREE (overflow free)
- */
 static int solve(int cls, int day, int slot)
 {
     if (day >= num_days)
@@ -173,11 +157,9 @@ static int solve(int cls, int day, int slot)
     if (slot >= TOTAL_SLOTS)
         return solve(cls, day + 1, 0);
 
-    /* Skip non-empty slots (breaks, free, already filled) */
     if (timetable[cls][day][slot] != EMPTY)
         return solve(cls, day, slot + 1);
 
-    /* Try each subject in random order */
     int order[MAX_SUBJECTS];
     for (int i = 0; i < num_subjects; i++)
         order[i] = i;
@@ -189,7 +171,6 @@ static int solve(int cls, int day, int slot)
         if (remaining[sub] <= 0)
             continue;
 
-        /* No consecutive repetition for theory */
         if (!subjects[sub].is_lab && slot > 0) {
             int prev = slot - 1;
             if (is_break_slot(prev) && prev > 0)
@@ -198,11 +179,9 @@ static int solve(int cls, int day, int slot)
                 continue;
         }
 
-        /* Daily limit */
         if (count_subject_in_day(cls, day, sub) >= subjects[sub].max_per_day)
             continue;
 
-        /* LAB: double slot */
         if (subjects[sub].is_lab) {
             int next = slot + 1;
             if (next >= TOTAL_SLOTS)                continue;
@@ -221,7 +200,6 @@ static int solve(int cls, int day, int slot)
             timetable[cls][day][next] = EMPTY;
             remaining[sub] += 2;
         } else {
-            /* THEORY: single slot */
             timetable[cls][day][slot] = sub;
             remaining[sub]--;
 
@@ -233,7 +211,7 @@ static int solve(int cls, int day, int slot)
         }
     }
 
-    /* No subject fits -> mark as extra FREE and continue */
+    /* No subject fits -> mark as FREE */
     timetable[cls][day][slot] = FREE_PERIOD;
     if (solve(cls, day, slot + 1))
         return 1;
@@ -275,7 +253,6 @@ static void print_timetable(FILE *out, int cls)
 
     print_line(out, TOTAL_SLOTS);
 
-    /* Row 1: Time slots */
     fprintf(out, "  | %-10s |", "Time");
     for (int s = 0; s < TOTAL_SLOTS; s++) {
         char timebuf[14];
@@ -286,7 +263,6 @@ static void print_timetable(FILE *out, int cls)
 
     print_line(out, TOTAL_SLOTS);
 
-    /* Row 2: Period labels */
     fprintf(out, "  | %-10s |", "");
     int pnum = 1;
     for (int s = 0; s < TOTAL_SLOTS; s++) {
@@ -302,7 +278,6 @@ static void print_timetable(FILE *out, int cls)
 
     print_line(out, TOTAL_SLOTS);
 
-    /* Data rows */
     for (int d = 0; d < num_days; d++) {
         fprintf(out, "  | %-10s |", DAY_NAMES[d]);
         for (int s = 0; s < TOTAL_SLOTS; s++) {
@@ -448,6 +423,167 @@ static void read_subjects(void)
                total + FREE_PER_WEEK, available);
 }
 
+/* ──────────────── MySQL Storage ──────────────── */
+
+/*
+ * sql_escape - Simple escape for single quotes in strings.
+ * Replaces ' with '' for safe SQL insertion.
+ */
+static void sql_escape(char *dest, const char *src, int max)
+{
+    int j = 0;
+    for (int i = 0; src[i] && j < max - 2; i++) {
+        if (src[i] == '\'') {
+            dest[j++] = '\'';
+            dest[j++] = '\'';
+        } else {
+            dest[j++] = src[i];
+        }
+    }
+    dest[j] = '\0';
+}
+
+/*
+ * save_to_mysql - Generate SQL file and execute via mysql CLI.
+ *
+ * Creates database 'timetable_db' with 3 tables:
+ *   1. config     - Generation settings
+ *   2. subjects   - Subject details
+ *   3. timetable  - All schedule entries with timings
+ */
+static void save_to_mysql(void)
+{
+    printf("\n  Saving to MySQL database...\n");
+
+    /* Generate SQL file */
+    FILE *sql = fopen("timetable_data.sql", "w");
+    if (!sql) {
+        printf("  [!] Could not create SQL file.\n");
+        return;
+    }
+
+    /* Database and table creation */
+    fprintf(sql, "-- Timetable Generator - Auto-generated SQL\n");
+    fprintf(sql, "-- Database: %s\n\n", DB_NAME);
+
+    fprintf(sql, "CREATE DATABASE IF NOT EXISTS %s;\n", DB_NAME);
+    fprintf(sql, "USE %s;\n\n", DB_NAME);
+
+    /* Drop old tables */
+    fprintf(sql, "DROP TABLE IF EXISTS timetable;\n");
+    fprintf(sql, "DROP TABLE IF EXISTS subjects;\n");
+    fprintf(sql, "DROP TABLE IF EXISTS config;\n\n");
+
+    /* Config table */
+    fprintf(sql,
+        "CREATE TABLE config (\n"
+        "  id INT AUTO_INCREMENT PRIMARY KEY,\n"
+        "  num_classes INT NOT NULL,\n"
+        "  num_days INT NOT NULL,\n"
+        "  num_subjects INT NOT NULL,\n"
+        "  periods_per_day INT NOT NULL,\n"
+        "  generated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP\n"
+        ");\n\n");
+
+    fprintf(sql,
+        "INSERT INTO config (num_classes, num_days, num_subjects, periods_per_day)\n"
+        "VALUES (%d, %d, %d, 7);\n\n",
+        num_classes, num_days, num_subjects);
+
+    /* Subjects table */
+    fprintf(sql,
+        "CREATE TABLE subjects (\n"
+        "  id INT AUTO_INCREMENT PRIMARY KEY,\n"
+        "  subject_index INT NOT NULL,\n"
+        "  name VARCHAR(50) NOT NULL,\n"
+        "  weekly_hours INT NOT NULL,\n"
+        "  type VARCHAR(10) NOT NULL,\n"
+        "  max_per_day INT NOT NULL\n"
+        ");\n\n");
+
+    for (int i = 0; i < num_subjects; i++) {
+        char escaped[61];
+        sql_escape(escaped, subjects[i].name, 61);
+        fprintf(sql,
+            "INSERT INTO subjects (subject_index, name, weekly_hours, type, max_per_day)\n"
+            "VALUES (%d, '%s', %d, '%s', %d);\n",
+            i, escaped, subjects[i].weekly_hours,
+            subjects[i].is_lab ? "Lab" : "Theory",
+            subjects[i].max_per_day);
+    }
+
+    /* Timetable table */
+    fprintf(sql, "\n"
+        "CREATE TABLE timetable (\n"
+        "  id INT AUTO_INCREMENT PRIMARY KEY,\n"
+        "  class_num INT NOT NULL,\n"
+        "  day_name VARCHAR(15) NOT NULL,\n"
+        "  slot_num INT NOT NULL,\n"
+        "  time_start VARCHAR(10) NOT NULL,\n"
+        "  time_end VARCHAR(10) NOT NULL,\n"
+        "  subject VARCHAR(50) NOT NULL,\n"
+        "  slot_type VARCHAR(15) NOT NULL\n"
+        ");\n\n");
+
+    int entry_count = 0;
+    for (int c = 0; c < num_classes; c++) {
+        fprintf(sql, "-- Class %d\n", c + 1);
+        for (int d = 0; d < num_days; d++) {
+            for (int s = 0; s < TOTAL_SLOTS; s++) {
+                const char *label = get_slot_label(timetable[c][d][s]);
+                const char *slot_type;
+
+                int val = timetable[c][d][s];
+                if (val == TEA_BREAK)        slot_type = "Tea Break";
+                else if (val == LUNCH_BREAK) slot_type = "Lunch Break";
+                else if (val == FREE_PERIOD) slot_type = "Free";
+                else if (val >= 0)           slot_type = subjects[val].is_lab ? "Lab" : "Theory";
+                else                         slot_type = "Empty";
+
+                char escaped_label[61];
+                sql_escape(escaped_label, label, 61);
+
+                fprintf(sql,
+                    "INSERT INTO timetable "
+                    "(class_num, day_name, slot_num, time_start, time_end, subject, slot_type)\n"
+                    "VALUES (%d, '%s', %d, '%s', '%s', '%s', '%s');\n",
+                    c + 1, DAY_NAMES[d], s + 1,
+                    SLOT_START[s], SLOT_END[s],
+                    escaped_label, slot_type);
+                entry_count++;
+            }
+        }
+        fprintf(sql, "\n");
+    }
+
+    /* Add some useful views */
+    fprintf(sql, "-- Useful query: View timetable for a specific class\n");
+    fprintf(sql, "-- SELECT day_name, time_start, time_end, subject, slot_type\n");
+    fprintf(sql, "-- FROM timetable WHERE class_num = 1 ORDER BY FIELD(day_name, 'Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'), slot_num;\n\n");
+
+    fclose(sql);
+    printf("  [+] SQL file created: timetable_data.sql (%d entries)\n", entry_count);
+
+    /* Execute SQL via mysql command-line client */
+    char cmd[512];
+    sprintf(cmd,
+        "\"C:\\Program Files\\MySQL\\MySQL Server 9.3\\bin\\mysql.exe\" "
+        "-u%s -p%s < timetable_data.sql",
+        DB_USER, DB_PASS);
+
+    printf("  [*] Executing SQL on MySQL server...\n");
+    int result = system(cmd);
+
+    if (result == 0) {
+        printf("  [+] All data stored in MySQL database '%s'.\n", DB_NAME);
+        printf("  [+] Tables created: config, subjects, timetable\n");
+    } else {
+        printf("  [!] MySQL import failed (exit code: %d).\n", result);
+        printf("      You can manually import: mysql -u%s -p%s < timetable_data.sql\n",
+               DB_USER, DB_PASS);
+    }
+}
+
 /* ──────────────── Main ──────────────── */
 
 int main(void)
@@ -462,28 +598,22 @@ int main(void)
     for (int c = 0; c < num_classes; c++) {
         int success = 0;
 
-        /* Try up to 50 random free placements */
         for (int attempt = 0; attempt < 50 && !success; attempt++) {
 
-            /* Clear timetable */
             for (int d = 0; d < num_days; d++)
                 for (int s = 0; s < TOTAL_SLOTS; s++)
                     timetable[c][d][s] = EMPTY;
 
-            /* Place breaks */
             for (int d = 0; d < num_days; d++) {
                 timetable[c][d][TEA_SLOT]   = TEA_BREAK;
                 timetable[c][d][LUNCH_SLOT] = LUNCH_BREAK;
             }
 
-            /* Place 3 random free periods */
             place_free_periods(c);
 
-            /* Reset subject hours */
             for (int i = 0; i < num_subjects; i++)
                 remaining[i] = subjects[i].weekly_hours;
 
-            /* Check if all remaining hours are 0 after solve */
             if (solve(c, 0, 0)) {
                 int all_placed = 1;
                 for (int i = 0; i < num_subjects; i++) {
@@ -500,7 +630,7 @@ int main(void)
         }
     }
 
-    /* Display */
+    /* Display timetables */
     printf("\n");
     printf("  =============================================\n");
     printf("        GENERATED WEEKLY TIMETABLES\n");
@@ -511,7 +641,7 @@ int main(void)
         print_summary(stdout, c);
     }
 
-    /* Export */
+    /* Export to text file */
     FILE *fp = fopen("timetable.txt", "w");
     if (fp) {
         time_t now = time(NULL);
@@ -528,6 +658,9 @@ int main(void)
     } else {
         printf("\n  [!] Error: Could not write to timetable.txt\n");
     }
+
+    /* Store in MySQL */
+    save_to_mysql();
 
     printf("\n  Press Enter to exit...");
     while (getchar() != '\n');
