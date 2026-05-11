@@ -9,9 +9,9 @@ A **C-based timetable generator** that creates conflict-free weekly schedules fo
 - Fixed college timings: **8:30 AM to 4:15 PM**
 - Includes **Tea Break** (10:20 - 10:40) and **Lunch Break** (12:30 - 1:30)
 - **3 FREE periods** randomly placed per class per week
+- **No repetition on same day**: Theory subjects appear once; Labs appear as one double-session
+- **Database Integration**: Automatically exports to `timetable.txt` and stores in **MySQL**
 - Prevents same-subject repetition in consecutive slots
-- Daily limit of 2 periods per subject
-- Exports timetable to `timetable.txt`
 
 ## Daily Schedule
 
@@ -32,10 +32,16 @@ A **C-based timetable generator** that creates conflict-free weekly schedules fo
 **Backtracking with Constraint Satisfaction:**
 1. Pre-place breaks and 3 random FREE periods
 2. Try each subject in shuffled order (for variety)
-3. Apply constraints: no repetition, daily limits, lab continuity
+3. Apply constraints: **No subject repetition on the same day**, lab continuity
 4. Backtrack on dead-ends; retry with different free placements
 
 **Time Complexity:** O(S^(D×P)) worst case, heavily pruned by constraints
+
+## Database Schema
+The system creates a database `timetable_db` with three tables:
+- `config`: Stores generation settings
+- `subjects`: Stores subject names and hour requirements
+- `timetable`: Stores the final generated schedule with timings
 
 ## How to Compile & Run
 

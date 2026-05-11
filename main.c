@@ -410,7 +410,7 @@ static void read_subjects(void)
                    subjects[i].weekly_hours);
         }
 
-        subjects[i].max_per_day = 2;
+        subjects[i].max_per_day = subjects[i].is_lab ? 2 : 1;
     }
 
     int total = 0;
