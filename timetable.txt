@@ -67,3 +67,5 @@ Subject Allocation Summary (Class 2):
 | Biology               | 3        | 3        | Theory |
 +-----------------------+----------+----------+--------+
 Total: 22 assigned + 13 free = 35 / 35 usable slots
+
+
