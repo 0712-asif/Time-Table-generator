@@ -1021,8 +1021,8 @@ static void draw_timetable_viewer(int cls) {
     // Time Headers
     tui_draw_str(start_x, start_y + 1, "│ Day/Time │", 180, 190, 254, 30, 30, 46);
     for (int s = 0; s < TOTAL_SLOTS; s++) {
-        char timebuf[12];
-        sprintf(timebuf, "%-9s│", SLOT_START[s]);
+        char timebuf[16];
+        sprintf(timebuf, "%-10s│", SLOT_START[s]);
         tui_draw_str(start_x + 12 + s * 11, start_y + 1, timebuf, 205, 214, 244, 30, 30, 46);
     }
     
@@ -1032,11 +1032,11 @@ static void draw_timetable_viewer(int cls) {
     tui_draw_str(start_x, start_y + 3, "│ Period   │", 180, 190, 254, 30, 30, 46);
     int pnum = 1;
     for (int s = 0; s < TOTAL_SLOTS; s++) {
-        char pbuf[12];
+        char pbuf[16];
         if (is_break_slot(s)) {
-            sprintf(pbuf, "%-9s│", s == TEA_SLOT ? "TEA" : "LUNCH");
+            sprintf(pbuf, "%-10s│", s == TEA_SLOT ? "TEA" : "LUNCH");
         } else {
-            sprintf(pbuf, "P%d       │", pnum++);
+            sprintf(pbuf, "P%d        │", pnum++);
         }
         tui_draw_str(start_x + 12 + s * 11, start_y + 3, pbuf, 205, 214, 244, 30, 30, 46);
     }
@@ -1047,7 +1047,7 @@ static void draw_timetable_viewer(int cls) {
     for (int d = 0; d < num_days; d++) {
         int curr_y = start_y + 5 + d * 2;
         
-        char day_buf[12];
+        char day_buf[20];
         sprintf(day_buf, "│%-10s│", DAY_NAMES[d]);
         tui_draw_str(start_x, curr_y, day_buf, 180, 190, 254, 30, 30, 46);
 
@@ -1106,9 +1106,9 @@ static void draw_timetable_viewer(int cls) {
         char sum_buf[64];
         sprintf(sum_buf, "%s: %d/%d hrs (%s)", subjects[i].name, assigned, subjects[i].weekly_hours, subjects[i].is_lab ? "Lab" : "Theory");
         
-        int row_offset = i / 4;
-        int col_offset = i % 4;
-        tui_draw_str(start_x + col_offset * 28, summary_y + 1 + row_offset, sum_buf, 205, 214, 244, 30, 30, 46);
+        int row_offset = i / 3;
+        int col_offset = i % 3;
+        tui_draw_str(start_x + col_offset * 37, summary_y + 1 + row_offset, sum_buf, 205, 214, 244, 30, 30, 46);
     }
 
     // Actions block
@@ -1163,7 +1163,7 @@ static int run_generator(char *status_msg) {
 
 /* ──────────────── Main Program Entry ──────────────── */
 
-int main(void)
+int main()
 {
     srand((unsigned int)time(NULL));
 
